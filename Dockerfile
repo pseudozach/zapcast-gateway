@@ -13,5 +13,6 @@ COPY . .
 
 ENV PORT=8787
 EXPOSE 8787
+EXPOSE 49737/udp
 
 CMD ["npm", "start"]

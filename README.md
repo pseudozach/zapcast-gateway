@@ -34,6 +34,7 @@ ZAPCAST_GATEWAY_STORAGE=./data/corestore
 ZAPCAST_CLEAR_STORAGE_ON_START=true
 ZAPCAST_STORAGE_MAX_AGE_MS=86400000
 ZAPCAST_STORAGE_CLEANUP_INTERVAL_MS=3600000
+ZAPCAST_DHT_PORT=49737
 ```
 
 ## Endpoints
@@ -104,12 +105,21 @@ cd /root/zapcast-gateway
 git pull
 docker build -t zapcast-gateway .
 docker rm -f zapcast-gateway 2>/dev/null || true
-docker run -d --name zapcast-gateway --restart unless-stopped \
-  -p 8787:8787 \
+docker run -d --name zapcast-gateway --restart unless-stopped --network host \
   -e PORT=8787 \
+  -e ZAPCAST_DHT_PORT=49737 \
   -e ZAPCAST_LOG_LEVEL=info \
   zapcast-gateway
 docker logs -f zapcast-gateway
+```
+
+Use host networking for Docker on Linux. Publishing `-p 8787:8787` only exposes the browser WebSocket HTTP port; Hyperswarm also needs UDP DHT and holepunch traffic. `ZAPCAST_DHT_PORT=49737` pins the gateway DHT socket to a stable UDP port so the VM firewall can allow it.
+
+Minimum VM firewall:
+
+```bash
+ufw allow 8787/tcp
+ufw allow 49737/udp
 ```
 
 Run with pm2:

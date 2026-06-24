@@ -12,7 +12,7 @@ import { decodeRecord, deriveTopic, inspectMp4, parseStreamId, recordToMessage }
 const LIVE_BACKFILL_CHUNKS = 60
 
 export class StreamSession extends EventEmitter {
-  constructor ({ streamId, storageRoot, cacheChunks, maxClients, logger }) {
+  constructor ({ streamId, storageRoot, cacheChunks, maxClients, dhtPort, logger }) {
     super()
     const parsed = parseStreamId(streamId)
     this.streamId = parsed.streamId
@@ -22,6 +22,7 @@ export class StreamSession extends EventEmitter {
     this.storageRoot = storageRoot
     this.cacheChunks = cacheChunks
     this.maxClients = maxClients
+    this.dhtPort = dhtPort
     this.logger = logger
     this.clients = new Set()
     this.cache = new Map()
@@ -55,9 +56,19 @@ export class StreamSession extends EventEmitter {
     this.core = this.store.get({ key: b4a.from(this.feedKeyHex, 'hex'), valueEncoding: 'json' })
     await this.core.ready()
 
-    this.swarm = new Hyperswarm({ keyPair: crypto.keyPair() })
+    this.swarm = new Hyperswarm({ keyPair: crypto.keyPair(), port: this.dhtPort || 0 })
     this.swarm.on('connection', (socket, info = {}) => this.handlePeer(socket, info))
     this.swarm.on('error', err => this.logError('swarm_error', err))
+    this.swarm.on('update', () => {
+      this.logger.debug('swarm_update', {
+        streamId: this.streamId,
+        peers: this.connectedPeers(),
+        connecting: this.swarm.connecting,
+        clientAttempts: this.swarm.stats?.connects?.client?.attempted || 0,
+        clientOpened: this.swarm.stats?.connects?.client?.opened || 0,
+        serverOpened: this.swarm.stats?.connects?.server?.opened || 0
+      })
+    })
 
     const discovery = this.swarm.join(this.topic, { client: true, server: true })
     await discovery.flushed()
@@ -66,6 +77,7 @@ export class StreamSession extends EventEmitter {
       feedKey: this.feedKeyHex.slice(0, 12),
       topic: b4a.toString(this.topic, 'hex'),
       gatewayPeer: b4a.toString(this.swarm.keyPair.publicKey, 'hex'),
+      dhtPort: this.dhtPort || 'random',
       storageDirectory: this.storageDirectory
     })
 
@@ -319,10 +331,11 @@ function hasVideoMarker (markers = []) {
 }
 
 export class SessionRegistry {
-  constructor ({ storageRoot, cacheChunks, maxClients, logger }) {
+  constructor ({ storageRoot, cacheChunks, maxClients, dhtPort, logger }) {
     this.storageRoot = storageRoot
     this.cacheChunks = cacheChunks
     this.maxClients = maxClients
+    this.dhtPort = dhtPort
     this.logger = logger
     this.sessions = new Map()
     this.cleanupTimers = new Map()
@@ -342,6 +355,7 @@ export class SessionRegistry {
       storageRoot: this.storageRoot,
       cacheChunks: this.cacheChunks,
       maxClients: this.maxClients,
+      dhtPort: this.dhtPort,
       logger: this.logger
     })
     session.on('client-close', () => this.scheduleCleanup(session))

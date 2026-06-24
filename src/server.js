@@ -15,11 +15,12 @@ const storageRoot = process.env.ZAPCAST_GATEWAY_STORAGE || path.join(__dirname, 
 const storageMaxAgeMs = Number(process.env.ZAPCAST_STORAGE_MAX_AGE_MS || 24 * 60 * 60 * 1000)
 const storageCleanupIntervalMs = Number(process.env.ZAPCAST_STORAGE_CLEANUP_INTERVAL_MS || 60 * 60 * 1000)
 const clearStorageOnStart = process.env.ZAPCAST_CLEAR_STORAGE_ON_START !== 'false'
+const dhtPort = Number(process.env.ZAPCAST_DHT_PORT || 0) || 0
 
 const logger = createLogger(logLevel)
 if (clearStorageOnStart) await clearStorageRoot({ storageRoot, logger })
 else await cleanupStorageRoot({ storageRoot, maxAgeMs: storageMaxAgeMs, logger })
-const registry = new SessionRegistry({ storageRoot, cacheChunks, maxClients, logger })
+const registry = new SessionRegistry({ storageRoot, cacheChunks, maxClients, dhtPort, logger })
 const storageCleanupTimer = setInterval(() => {
   cleanupStorageRoot({
     storageRoot,
@@ -72,7 +73,7 @@ wss.on('connection', async (ws, req, rawStreamId) => {
 })
 
 server.listen(port, () => {
-  logger.info('gateway_listening', { port, maxClients, cacheChunks, storageRoot })
+  logger.info('gateway_listening', { port, dhtPort: dhtPort || 'random', maxClients, cacheChunks, storageRoot })
 })
 
 server.on('error', err => {
