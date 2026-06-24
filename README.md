@@ -16,6 +16,7 @@ The gateway is intended to run on a VM at `gateway.zapcast.live`. It joins the s
 ```bash
 cd services/zapcast-gateway
 npm install
+npm run diagnose:native
 npm run smoke
 npm start
 ```
@@ -65,13 +66,23 @@ Gateway messages:
 
 On Debian/Ubuntu, use the package scripts exactly as written. The gateway preloads `src/preload-sodium.cjs` so Holepunch dependencies use `sodium-javascript` instead of loading the `sodium-native` addon, which can fail on older Debian/glibc systems.
 
+The gateway still depends on native Linux addons from the Holepunch stack:
+
+- `hyperswarm` loads `udx-native`
+- `corestore` loads `rocksdb-native`
+
+Installing Pear on the server is not required for this Node gateway. It does not replace these Node native addons for `npm start`.
+
 Clean deploy:
 
 ```bash
+apt-get update
+apt-get install -y libatomic1
 cd /root/zapcast-gateway
 git pull
 rm -rf node_modules package-lock.json
 npm install
+npm run diagnose:native
 npm run smoke
 npm start
 ```
@@ -79,7 +90,26 @@ npm start
 Expected smoke output:
 
 ```text
-gateway sodium preload ok
+gateway native preload ok
+```
+
+If `npm run diagnose:native` shows `libatomic.so.1 => not found`, install `libatomic1` and reinstall dependencies.
+
+If it shows `GLIBC_2.xx not found`, the OS runtime is too old for the shipped `rocksdb-native` or `udx-native` prebuild. Move the gateway to Debian 12/bookworm, Ubuntu 22.04+, Ubuntu 24.04, or run it in a bookworm-based Node Docker image such as `node:20-bookworm` or `node:22-bookworm`.
+
+Example Docker fallback on an older host:
+
+```bash
+docker run -d \
+  --name zapcast-gateway \
+  --restart unless-stopped \
+  -p 8787:8787 \
+  -e PORT=8787 \
+  -e ZAPCAST_LOG_LEVEL=info \
+  -v /root/zapcast-gateway:/app \
+  -w /app \
+  node:20-bookworm \
+  sh -lc "apt-get update && apt-get install -y libatomic1 && npm install && npm start"
 ```
 
 Run with pm2:

@@ -6,8 +6,9 @@
   "description": "Long-running ZapCast WebSocket gateway for browser viewers.",
   "scripts": {
     "start": "node --require ./src/preload-sodium.cjs src/server.js",
-    "check": "node --check src/preload-sodium.cjs && node --check src/server.js src/stream-session.js src/zapcast-protocol.js src/logger.js",
-    "smoke": "node --require ./src/preload-sodium.cjs -e \"require('hypercore-crypto'); require('hyperswarm'); require('corestore'); console.log('gateway sodium preload ok')\""
+    "check": "node --check src/preload-sodium.cjs && node --check scripts/diagnose-native.cjs && node --check src/server.js src/stream-session.js src/zapcast-protocol.js src/logger.js",
+    "diagnose:native": "node scripts/diagnose-native.cjs",
+    "smoke": "node --require ./src/preload-sodium.cjs -e \"require('hypercore-crypto'); require('rocksdb-native'); require('udx-native'); require('hyperswarm'); require('corestore'); console.log('gateway native preload ok')\""
   },
   "dependencies": {
     "b4a": "^1.6.7",
