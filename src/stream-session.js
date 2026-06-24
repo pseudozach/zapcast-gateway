@@ -12,7 +12,7 @@ import { decodeRecord, deriveTopic, inspectMp4, parseStreamId, recordToMessage }
 const LIVE_BACKFILL_CHUNKS = 60
 
 export class StreamSession extends EventEmitter {
-  constructor ({ streamId, storageRoot, cacheChunks, maxClients, dhtPort, logger }) {
+  constructor ({ streamId, storageRoot, cacheChunks, maxClients, dhtPort, swarmServer, logger }) {
     super()
     const parsed = parseStreamId(streamId)
     this.streamId = parsed.streamId
@@ -23,6 +23,7 @@ export class StreamSession extends EventEmitter {
     this.cacheChunks = cacheChunks
     this.maxClients = maxClients
     this.dhtPort = dhtPort
+    this.swarmServer = swarmServer
     this.logger = logger
     this.clients = new Set()
     this.cache = new Map()
@@ -59,6 +60,16 @@ export class StreamSession extends EventEmitter {
     this.swarm = new Hyperswarm({ keyPair: crypto.keyPair(), port: this.dhtPort || 0 })
     this.swarm.on('connection', (socket, info = {}) => this.handlePeer(socket, info))
     this.swarm.on('error', err => this.logError('swarm_error', err))
+    this.swarm.on('ban', (peerInfo, err) => {
+      this.logger.warn('peer_connection_failed', {
+        streamId: this.streamId,
+        targetPeerId: peerInfo?.publicKey ? b4a.toString(peerInfo.publicKey, 'hex') : '',
+        attempts: peerInfo?.attempts || 0,
+        topics: peerInfo?.topics?.length || 0,
+        code: err?.code || '',
+        message: err?.message || 'peer connection failed'
+      })
+    })
     this.swarm.on('update', () => {
       this.logger.debug('swarm_update', {
         streamId: this.streamId,
@@ -66,11 +77,13 @@ export class StreamSession extends EventEmitter {
         connecting: this.swarm.connecting,
         clientAttempts: this.swarm.stats?.connects?.client?.attempted || 0,
         clientOpened: this.swarm.stats?.connects?.client?.opened || 0,
-        serverOpened: this.swarm.stats?.connects?.server?.opened || 0
+        serverOpened: this.swarm.stats?.connects?.server?.opened || 0,
+        bannedPeers: this.swarm.stats?.bannedPeers || 0,
+        knownPeers: this.swarm.peers?.size || 0
       })
     })
 
-    const discovery = this.swarm.join(this.topic, { client: true, server: true })
+    const discovery = this.swarm.join(this.topic, { client: true, server: this.swarmServer })
     await discovery.flushed()
     this.logger.info('stream_joined', {
       streamId: this.streamId,
@@ -78,6 +91,8 @@ export class StreamSession extends EventEmitter {
       topic: b4a.toString(this.topic, 'hex'),
       gatewayPeer: b4a.toString(this.swarm.keyPair.publicKey, 'hex'),
       dhtPort: this.dhtPort || 'random',
+      swarmClient: true,
+      swarmServer: this.swarmServer,
       storageDirectory: this.storageDirectory
     })
 
@@ -281,6 +296,10 @@ export class StreamSession extends EventEmitter {
       browserClients: this.clients.size,
       latestSeq: this.latestSeq,
       gatewayLatencyMs: this.latestReceivedAt ? Date.now() - this.latestReceivedAt : 0,
+      knownPeers: this.swarm?.peers?.size || 0,
+      connectingPeers: this.swarm?.connecting || 0,
+      connectionAttempts: this.swarm?.stats?.connects?.client?.attempted || 0,
+      bannedPeers: this.swarm?.stats?.bannedPeers || 0,
       warmStart: this.lastWarmStart
     }
   }
@@ -293,6 +312,9 @@ export class StreamSession extends EventEmitter {
     return {
       streamId: this.streamId,
       connectedPeers: this.connectedPeers(),
+      knownPeers: this.swarm?.peers?.size || 0,
+      connectionAttempts: this.swarm?.stats?.connects?.client?.attempted || 0,
+      bannedPeers: this.swarm?.stats?.bannedPeers || 0,
       browserClients: this.clients.size,
       latestSeq: this.latestSeq,
       cacheStartSeq: this.cache.size ? Math.min(...this.cache.keys()) : 0,
@@ -331,11 +353,12 @@ function hasVideoMarker (markers = []) {
 }
 
 export class SessionRegistry {
-  constructor ({ storageRoot, cacheChunks, maxClients, dhtPort, logger }) {
+  constructor ({ storageRoot, cacheChunks, maxClients, dhtPort, swarmServer, logger }) {
     this.storageRoot = storageRoot
     this.cacheChunks = cacheChunks
     this.maxClients = maxClients
     this.dhtPort = dhtPort
+    this.swarmServer = swarmServer
     this.logger = logger
     this.sessions = new Map()
     this.cleanupTimers = new Map()
@@ -356,6 +379,7 @@ export class SessionRegistry {
       cacheChunks: this.cacheChunks,
       maxClients: this.maxClients,
       dhtPort: this.dhtPort,
+      swarmServer: this.swarmServer,
       logger: this.logger
     })
     session.on('client-close', () => this.scheduleCleanup(session))

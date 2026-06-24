@@ -35,6 +35,7 @@ ZAPCAST_CLEAR_STORAGE_ON_START=true
 ZAPCAST_STORAGE_MAX_AGE_MS=86400000
 ZAPCAST_STORAGE_CLEANUP_INTERVAL_MS=3600000
 ZAPCAST_DHT_PORT=49737
+ZAPCAST_SWARM_SERVER=false
 ```
 
 ## Endpoints
@@ -44,6 +45,8 @@ ZAPCAST_DHT_PORT=49737
 - `WS /stream?streamId=zc1...`
 
 Gateway Corestore data is temporary. Each stream session uses a unique storage folder, per-stream storage is deleted when a stream session closes, and `ZAPCAST_CLEAR_STORAGE_ON_START=true` clears old gateway Corestore data at startup so stale video chunks are never replayed. If startup clearing is disabled, stale inactive storage folders older than `ZAPCAST_STORAGE_MAX_AGE_MS` are pruned on startup and every `ZAPCAST_STORAGE_CLEANUP_INTERVAL_MS`.
+
+The gateway joins Hyperswarm as a client by default. It does not announce itself as a server for the stream topic, because browser viewers do not relay and stale gateway server announcements can make other viewers dial a gateway that has no useful stream data.
 
 Gateway messages:
 
@@ -108,6 +111,7 @@ docker rm -f zapcast-gateway 2>/dev/null || true
 docker run -d --name zapcast-gateway --restart unless-stopped --network host \
   -e PORT=8787 \
   -e ZAPCAST_DHT_PORT=49737 \
+  -e ZAPCAST_SWARM_SERVER=false \
   -e ZAPCAST_LOG_LEVEL=info \
   zapcast-gateway
 docker logs -f zapcast-gateway
