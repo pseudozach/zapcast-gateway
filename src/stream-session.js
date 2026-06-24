@@ -10,6 +10,9 @@ import { WebSocket } from 'ws'
 import { decodeRecord, deriveTopic, inspectMp4, parseStreamId, recordToMessage } from './zapcast-protocol.js'
 
 const LIVE_BACKFILL_CHUNKS = 60
+const INIT_BLOCK_TIMEOUT_MS = 15000
+const LIVE_BLOCK_TIMEOUT_MS = 3000
+const FEED_UPDATE_TIMEOUT_MS = 5000
 
 export class StreamSession extends EventEmitter {
   constructor ({ streamId, storageRoot, cacheChunks, maxClients, dhtPort, swarmServer, logger }) {
@@ -122,51 +125,96 @@ export class StreamSession extends EventEmitter {
   }
 
   async readLive () {
-    await this.core.update({ wait: true }).catch(() => this.core.update())
-    const tailStart = Math.max(0, this.core.length - this.cacheChunks)
-    const latestInitBlock = await this.findLatestInitBlock(tailStart, this.core.length)
-    const start = latestInitBlock >= tailStart ? latestInitBlock : tailStart
+    await this.waitForFeedLength()
+    while (!this.closed && !this.initRecord) {
+      if (await this.readInitSegment()) break
+      await sleep(500)
+    }
+
+    const start = this.liveStart()
     this.logger.info('feed_reader_started', {
       streamId: this.streamId,
       start,
       length: this.core.length,
-      tailStart,
-      latestInitBlock
+      tailStart: Math.max(0, this.core.length - this.cacheChunks)
     })
 
-    if (latestInitBlock < tailStart && start > 0) {
-      try {
-        this.handleRecord(decodeRecord(await this.core.get(0, { wait: true, timeout: 10_000 })))
-      } catch (err) {
-        this.logError('init_segment_read_error', err)
-      }
-    }
+    let next = start
 
-    for await (const encoded of this.core.createReadStream({ start, live: true })) {
-      if (this.closed) break
-      try {
-        this.handleRecord(decodeRecord(encoded))
-      } catch (err) {
-        this.logError('record_decode_error', err)
+    while (!this.closed) {
+      await this.updateFeedLength()
+
+      if (next >= this.core.length) {
+        await sleep(250)
+        continue
       }
+
+      if (await this.readRecordAt(next)) {
+        next += 1
+        continue
+      }
+
+      const skippedTo = Math.max(next + 1, this.liveStart())
+      this.logger.warn('feed_block_skipped', {
+        streamId: this.streamId,
+        index: next,
+        skippedTo,
+        length: this.core.length,
+        peers: this.connectedPeers()
+      })
+      next = skippedTo
     }
   }
 
-  async findLatestInitBlock (start, end) {
-    let latest = -1
-    for (let index = start; index < end; index++) {
-      try {
-        const record = decodeRecord(await this.core.get(index, { wait: true, timeout: 5000 }))
-        if (record.type === 'init') latest = index
-      } catch (err) {
-        this.logger.warn('tail_scan_record_failed', {
-          streamId: this.streamId,
-          index,
-          message: err.message
-        })
-      }
+  async waitForFeedLength () {
+    while (!this.closed && this.core.length === 0) {
+      await this.updateFeedLength({ timeout: INIT_BLOCK_TIMEOUT_MS })
+      if (this.core.length === 0) await sleep(500)
     }
-    return latest
+  }
+
+  async updateFeedLength ({ timeout = FEED_UPDATE_TIMEOUT_MS } = {}) {
+    try {
+      await this.core.update({ wait: true, timeout })
+    } catch (err) {
+      if (!isTimeoutError(err)) throw err
+    }
+  }
+
+  async readInitSegment () {
+    if (this.initRecord) return true
+    try {
+      const encoded = await this.core.get(0, { wait: true, timeout: INIT_BLOCK_TIMEOUT_MS })
+      this.handleRecord(decodeRecord(encoded))
+      return true
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        this.logger.warn('init_segment_timeout', {
+          streamId: this.streamId,
+          length: this.core.length,
+          peers: this.connectedPeers()
+        })
+        return false
+      }
+      this.logError('init_segment_read_error', err)
+      return false
+    }
+  }
+
+  async readRecordAt (index) {
+    try {
+      const encoded = await this.core.get(index, { wait: true, timeout: LIVE_BLOCK_TIMEOUT_MS })
+      this.handleRecord(decodeRecord(encoded))
+      return true
+    } catch (err) {
+      if (isTimeoutError(err)) return false
+      this.logError('record_decode_error', err)
+      return true
+    }
+  }
+
+  liveStart () {
+    return Math.max(1, this.core.length - Math.min(LIVE_BACKFILL_CHUNKS, this.cacheChunks))
   }
 
   handleRecord (record) {
@@ -439,4 +487,14 @@ function sendJson (ws, message) {
 
 function safePathSegment (value) {
   return value.replace(/[^a-f0-9]/gi, '')
+}
+
+function sleep (ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isTimeoutError (err) {
+  return err?.code === 'REQUEST_TIMEOUT' ||
+    err?.code === 'TIMEOUT' ||
+    /timeout/i.test(err?.message || '')
 }
