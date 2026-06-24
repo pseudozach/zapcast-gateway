@@ -95,21 +95,21 @@ gateway native preload ok
 
 If `npm run diagnose:native` shows `libatomic.so.1 => not found`, install `libatomic1` and reinstall dependencies.
 
-If it shows `GLIBC_2.xx not found`, the OS runtime is too old for the shipped `rocksdb-native` or `udx-native` prebuild. Move the gateway to Debian 12/bookworm, Ubuntu 22.04+, Ubuntu 24.04, or run it in a bookworm-based Node Docker image such as `node:20-bookworm` or `node:22-bookworm`.
+If it shows `GLIBC_2.xx not found` or `GLIBCXX_3.4.xx not found`, the OS C/C++ runtime is too old for the shipped `rocksdb-native` or `udx-native` prebuild. Move the gateway to Debian 12/bookworm, Ubuntu 22.04+, Ubuntu 24.04, or run it with the included bookworm-based Dockerfile.
 
-Example Docker fallback on an older host:
+Docker fallback on an older host:
 
 ```bash
-docker run -d \
-  --name zapcast-gateway \
-  --restart unless-stopped \
+cd /root/zapcast-gateway
+git pull
+docker build -t zapcast-gateway .
+docker rm -f zapcast-gateway 2>/dev/null || true
+docker run -d --name zapcast-gateway --restart unless-stopped \
   -p 8787:8787 \
   -e PORT=8787 \
   -e ZAPCAST_LOG_LEVEL=info \
-  -v /root/zapcast-gateway:/app \
-  -w /app \
-  node:20-bookworm \
-  sh -lc "apt-get update && apt-get install -y libatomic1 && npm install && npm start"
+  zapcast-gateway
+docker logs -f zapcast-gateway
 ```
 
 Run with pm2:

@@ -60,7 +60,8 @@ for (const pkg of packages) {
 if (failed) {
   console.error('')
   console.error('One or more native dependencies failed to load.')
-  console.error('On Debian/Ubuntu, first install libatomic1. If ldd reports missing GLIBC symbols, use Debian 12/Ubuntu 22.04+ or a bookworm-based Node Docker image.')
+  console.error('On Debian/Ubuntu, first install libatomic1.')
+  console.error('If ldd reports missing GLIBC or GLIBCXX symbols, the OS C/C++ runtime is too old. Use Debian 12/Ubuntu 22.04+ or the included bookworm-based Dockerfile.')
   process.exit(1)
 }
 
