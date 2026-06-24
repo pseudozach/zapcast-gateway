@@ -1,0 +1,22 @@
+{
+  "name": "zapcast-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Long-running ZapCast WebSocket gateway for browser viewers.",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js src/stream-session.js src/zapcast-protocol.js src/logger.js"
+  },
+  "dependencies": {
+    "b4a": "^1.6.7",
+    "corestore": "^7.4.5",
+    "hypercore": "^11.17.0",
+    "hypercore-crypto": "^3.5.0",
+    "hyperswarm": "^4.11.7",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
