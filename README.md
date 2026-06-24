@@ -16,6 +16,7 @@ The gateway is intended to run on a VM at `gateway.zapcast.live`. It joins the s
 ```bash
 cd services/zapcast-gateway
 npm install
+npm run smoke
 npm start
 ```
 
@@ -62,11 +63,30 @@ Gateway messages:
 
 ## VM Deployment
 
+On Debian/Ubuntu, use the package scripts exactly as written. The gateway preloads `src/preload-sodium.cjs` so Holepunch dependencies use `sodium-javascript` instead of loading the `sodium-native` addon, which can fail on older Debian/glibc systems.
+
+Clean deploy:
+
+```bash
+cd /root/zapcast-gateway
+git pull
+rm -rf node_modules package-lock.json
+npm install
+npm run smoke
+npm start
+```
+
+Expected smoke output:
+
+```text
+gateway sodium preload ok
+```
+
 Run with pm2:
 
 ```bash
 npm install --omit=dev
-PORT=8787 ZAPCAST_LOG_LEVEL=info pm2 start src/server.js --name zapcast-gateway
+PORT=8787 ZAPCAST_LOG_LEVEL=info pm2 start npm --name zapcast-gateway -- start
 pm2 save
 ```
 
@@ -79,7 +99,7 @@ After=network-online.target
 
 [Service]
 WorkingDirectory=/opt/zapcast-gateway
-ExecStart=/usr/bin/node src/server.js
+ExecStart=/usr/bin/npm start
 Restart=always
 Environment=PORT=8787
 Environment=ZAPCAST_MAX_CLIENTS_PER_STREAM=50

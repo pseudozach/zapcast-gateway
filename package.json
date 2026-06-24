@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Long-running ZapCast WebSocket gateway for browser viewers.",
   "scripts": {
-    "start": "node src/server.js",
-    "check": "node --check src/server.js src/stream-session.js src/zapcast-protocol.js src/logger.js"
+    "start": "node --require ./src/preload-sodium.cjs src/server.js",
+    "check": "node --check src/preload-sodium.cjs && node --check src/server.js src/stream-session.js src/zapcast-protocol.js src/logger.js",
+    "smoke": "node --require ./src/preload-sodium.cjs -e \"require('hypercore-crypto'); require('hyperswarm'); require('corestore'); console.log('gateway sodium preload ok')\""
   },
   "dependencies": {
     "b4a": "^1.6.7",
@@ -14,6 +15,7 @@
     "hypercore": "^11.17.0",
     "hypercore-crypto": "^3.5.0",
     "hyperswarm": "^4.11.7",
+    "sodium-javascript": "^0.8.0",
     "ws": "^8.18.0"
   },
   "engines": {
