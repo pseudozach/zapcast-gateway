@@ -53,6 +53,12 @@ for (const addon of addons) {
   console.log('')
 }
 
+console.log('[sodium]')
+tryRequire('sodium-native', 'sodium-native')
+tryRequire('sodium-universal', 'sodium-universal')
+console.log(`forceSodiumJs=${process.env.ZAPCAST_FORCE_SODIUM_JS === 'true' ? 'yes' : 'no'}`)
+console.log('')
+
 for (const pkg of packages) {
   tryRequire(pkg, pkg)
 }
